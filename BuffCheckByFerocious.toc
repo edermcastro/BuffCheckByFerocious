@@ -4,7 +4,7 @@
 ## Author: Eder Moraes de Castro
 ## Version: 1.0
 ## SavedVariables: BuffCheckDB, BFC_Config, BFC_DBIcon
-## IconTexture: Interface\Icons\INV_Misc_GroupNeedMore
+## IconTexture: Interface\Icons\INV_Misc_Food_15
 
 # Bibliotecas
 Libs\LibStub\LibStub.lua

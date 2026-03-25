@@ -160,7 +160,10 @@ local function GetRequiredBuffs()
 end
 
 local function UpdateGroupBuffs()
-    if not mainFrame:IsShown() or inCombat or InCombatLockdown() then return end
+    if not mainFrame:IsShown() or inCombat or InCombatLockdown() then 
+        BuffCheckDB.visible = false
+        mainFrame:SetShown(BuffCheckDB.visible)
+    return end
     
     local requiredClassBuffs = GetRequiredBuffs()
     local numGroup = GetNumGroupMembers()
