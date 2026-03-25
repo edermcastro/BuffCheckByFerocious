@@ -1,7 +1,7 @@
 --[[
     Addon: BuffCheckByFerocious
-    Versão: 1.9.1 (Anti-Taint & Secret Index Fix)
-    Descrição: Verifica consumíveis e buffs. Oculta e pausa durante combate com proteção total contra erros de "Secret String".
+    Versão: 1.9.3 (Universal Aura Fix)
+    Descrição: Verifica consumíveis e buffs. Compatibilidade total com APIs Retail/Midnight sem erros de Taint.
     Controle: 
         - Clique no Cadeado/Setas: Bloqueia/Desbloqueia movimento da janela.
         - Scroll no título: Ajustar transparência.
@@ -33,14 +33,19 @@ local CLASS_BUFFS_IDS = {
     [1126] = "DRUID",   -- Mark of the Wild
 }
 
--- Frascos / Elixires (IDs de TWW/Midnight)
+-- Frascos / Elixires (IDs comuns de Retail/Midnight)
 local FLASK_IDS = {
-    435422, 435416, 438499, 435418, 435417, 443393, 443210
+    435422, 435416, 438499, 435418, 435417, 443393, 443210, 443211, 443212
 }
 
 -- Runas
 local RUNE_IDS = {
     434488, 393438
+}
+
+-- Comidas (IDs específicos como fallback caso isFullBody falhe)
+local FOOD_IDS = {
+    440401, 440402, 440403, 440316, 440317, 440318
 }
 
 -- --- INTERFACE GRÁFICA ---
@@ -130,7 +135,7 @@ local function CreatePlayerLine(index)
     return f
 end
 
--- --- LÓGICA DE SCAN ---
+-- --- LÓGICA DE SCAN SEGURO ---
 
 local function GetRequiredBuffs()
     local required = {}
@@ -155,7 +160,6 @@ local function GetRequiredBuffs()
 end
 
 local function UpdateGroupBuffs()
-    -- Se a janela não estiver visível ou o jogador estiver em combate, não processamos nada
     if not mainFrame:IsShown() or inCombat or InCombatLockdown() then return end
     
     local requiredClassBuffs = GetRequiredBuffs()
@@ -179,7 +183,7 @@ local function UpdateGroupBuffs()
         if UnitExists(unit) then
             local hasC, hasF, hasR, hasB = false, false, false, true
             
-            -- Verificar Buffs de Classe (SpellID)
+            -- 1. Verificar Buffs de Classe (API Segura)
             for spellID in pairs(requiredClassBuffs) do
                 if not C_UnitAuras.GetPlayerAuraBySpellID(spellID, unit) then
                     hasB = false
@@ -187,25 +191,44 @@ local function UpdateGroupBuffs()
                 end
             end
 
-            -- Scan Consumíveis por ID (MÉTODO ANTI-SECRET INDEX)
+            -- 2. Verificar Frascos (API Segura)
+            for _, id in ipairs(FLASK_IDS) do
+                if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then
+                    hasF = true
+                    break
+                end
+            end
+
+            -- 3. Verificar Runas (API Segura)
+            for _, id in ipairs(RUNE_IDS) do
+                if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then
+                    hasR = true
+                    break
+                end
+            end
+
+            -- 4. Verificar Comida (Usa loop numérico em vez de ForEachAura para compatibilidade)
+            -- IMPORTANTE: Não tocamos no campo 'name' para evitar Taint
             for j = 1, 40 do
                 local data = C_UnitAuras.GetAuraDataByIndex(unit, j, "HELPFUL")
                 if not data then break end
-                
-                local sID = data.spellId
-                if data.isFullBody then hasC = true end
-                
-                -- Comparamos sID (que pode ser secret) com nossos IDs constantes
-                -- Usar loops evita "table index is secret"
-                for _, id in ipairs(FLASK_IDS) do
-                    if sID == id then hasF = true break end
-                end
-                
-                for _, id in ipairs(RUNE_IDS) do
-                    if sID == id then hasR = true break end
+                if data.isFullBody then 
+                    hasC = true 
+                    break 
                 end
             end
             
+            -- Fallback para IDs específicos de comida se isFullBody não detectar
+            if not hasC then
+                for _, id in ipairs(FOOD_IDS) do
+                    if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then
+                        hasC = true
+                        break
+                    end
+                end
+            end
+
+            -- Exibição
             if not (hasC and hasF and hasR and hasB) then
                 if not playerLines[displayIndex] then playerLines[displayIndex] = CreatePlayerLine(displayIndex) end
                 local line = playerLines[displayIndex]
@@ -222,7 +245,6 @@ local function UpdateGroupBuffs()
         end
     end
 
-    -- Altura Dinâmica (Protegida contra Taint)
     if not InCombatLockdown() then
         local targetHeight = math.max(40, 40 + ((displayIndex - 1) * 24) + 5)
         if mainFrame:GetHeight() ~= targetHeight then mainFrame:SetHeight(targetHeight) end
