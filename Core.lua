@@ -1,9 +1,10 @@
 --[[
     Addon: BuffCheckByFerocious
-    Versão: 1.9.3 (Universal Aura Fix)
-    Descrição: Verifica consumíveis e buffs. Compatibilidade total com APIs Retail/Midnight sem erros de Taint.
+    Versão: 2.0.1 (UI Adjustment)
+    Descrição: Verifica consumíveis e buffs. Botão de relatório movido para a esquerda.
     Controle: 
         - Clique no Cadeado/Setas: Bloqueia/Desbloqueia movimento da janela.
+        - Clique no Pergaminho (Esquerda): Relata players sem buffs no chat.
         - Scroll no título: Ajustar transparência.
 ]]
 
@@ -43,7 +44,7 @@ local RUNE_IDS = {
     434488, 393438
 }
 
--- Comidas (IDs específicos como fallback caso isFullBody falhe)
+-- Comidas (IDs específicos como fallback)
 local FOOD_IDS = {
     440401, 440402, 440403, 440316, 440317, 440318
 }
@@ -78,8 +79,11 @@ local title = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 title:SetPoint("TOP", 0, -10)
 title:SetText("BuffCheckByFerocious")
 
+-- --- BOTÕES DO CABEÇALHO ---
+
+-- Botão de Lock (Mantido na Direita)
 local lockBtn = CreateFrame("Button", nil, mainFrame)
-lockBtn:SetSize(20, 20)
+lockBtn:SetSize(18, 18)
 lockBtn:SetPoint("TOPRIGHT", -8, -8)
 local lockIcon = lockBtn:CreateTexture(nil, "ARTWORK")
 lockIcon:SetAllPoints()
@@ -98,6 +102,110 @@ lockBtn:SetScript("OnClick", function()
     BuffCheckDB.isLocked = not BuffCheckDB.isLocked
     UpdateLockIcon()
 end)
+
+-- Botão de Relatório (Movido para a Esquerda)
+local reportBtn = CreateFrame("Button", nil, mainFrame)
+reportBtn:SetSize(18, 18)
+reportBtn:SetPoint("TOPLEFT", 8, -8) -- Nova posição: Canto superior esquerdo
+reportBtn:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_02")
+reportBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
+
+-- --- LÓGICA DE RELATÓRIO NO CHAT ---
+
+local function GetUnitList()
+    local units = {}
+    local numGroup = GetNumGroupMembers()
+    if IsInRaid() then
+        for i = 1, numGroup do table.insert(units, "raid"..i) end
+    elseif IsInGroup() then
+        table.insert(units, "player")
+        for i = 1, numGroup - 1 do table.insert(units, "party"..i) end
+    else
+        table.insert(units, "player")
+    end
+    return units
+end
+
+local function ScanUnitBuffs(unit, requiredClassBuffs)
+    local hasC, hasF, hasR, hasB = false, false, false, true
+    for spellID in pairs(requiredClassBuffs) do
+        if not C_UnitAuras.GetPlayerAuraBySpellID(spellID, unit) then
+            hasB = false
+            break
+        end
+    end
+    for _, id in ipairs(FLASK_IDS) do
+        if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then hasF = true break end
+    end
+    for _, id in ipairs(RUNE_IDS) do
+        if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then hasR = true break end
+    end
+    for j = 1, 40 do
+        local data = C_UnitAuras.GetAuraDataByIndex(unit, j, "HELPFUL")
+        if not data then break end
+        if data.isFullBody then hasC = true break end
+    end
+    if not hasC then
+        for _, id in ipairs(FOOD_IDS) do
+            if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then hasC = true break end
+        end
+    end
+    return hasC, hasF, hasR, hasB
+end
+
+local function ReportBuffsToChat()
+    local units = GetUnitList()
+    local requiredClassBuffs = {}
+    for _, unit in ipairs(units) do
+        local _, class = UnitClass(unit)
+        for spellID, buffClass in pairs(CLASS_BUFFS_IDS) do
+            if class == buffClass then requiredClassBuffs[spellID] = true end
+        end
+    end
+
+    local noFood = {}
+    local noFlask = {}
+    local needsRebuff = false
+
+    for _, unit in ipairs(units) do
+        if UnitExists(unit) then
+            local hasC, hasF, hasR, hasB = ScanUnitBuffs(unit, requiredClassBuffs)
+            local name = UnitName(unit)
+            if not hasC then table.insert(noFood, name) end
+            if not hasF then table.insert(noFlask, name) end
+            if not hasB then needsRebuff = true end
+        end
+    end
+
+    local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "SAY")
+    
+    if #noFood > 0 then
+        SendChatMessage("noFood: " .. table.concat(noFood, ", "), channel)
+    end
+    if #noFlask > 0 then
+        SendChatMessage("noFlask: " .. table.concat(noFlask, ", "), channel)
+    end
+    if needsRebuff then
+        SendChatMessage("!! REBUFF !!", channel)
+    end
+    
+    if #noFood == 0 and #noFlask == 0 and not needsRebuff then
+        print("|cFFFFFF00BuffCheck:|r Todos estão bufados!")
+    end
+end
+
+reportBtn:SetScript("OnClick", function()
+    ReportBuffsToChat()
+end)
+reportBtn:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Relatar no Chat")
+    GameTooltip:AddLine("Envia a lista de players sem buffs para a Raid/Grupo.", 1, 1, 1)
+    GameTooltip:Show()
+end)
+reportBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+-- --- RESTO DA INTERFACE ---
 
 mainFrame:EnableMouseWheel(true)
 mainFrame:SetScript("OnMouseWheel", function(self, delta)
@@ -135,47 +243,16 @@ local function CreatePlayerLine(index)
     return f
 end
 
--- --- LÓGICA DE SCAN SEGURO ---
-
-local function GetRequiredBuffs()
-    local required = {}
-    local numGroup = GetNumGroupMembers()
+local function UpdateGroupBuffs()
+    if not mainFrame:IsShown() or inCombat or InCombatLockdown() then return end
     
-    local function CheckUnit(unit)
+    local units = GetUnitList()
+    local requiredClassBuffs = {}
+    for _, unit in ipairs(units) do
         local _, class = UnitClass(unit)
         for spellID, buffClass in pairs(CLASS_BUFFS_IDS) do
-            if class == buffClass then required[spellID] = true end
+            if class == buffClass then requiredClassBuffs[spellID] = true end
         end
-    end
-
-    if IsInRaid() then
-        for i = 1, numGroup do CheckUnit("raid"..i) end
-    elseif IsInGroup() then
-        CheckUnit("player")
-        for i = 1, numGroup - 1 do CheckUnit("party"..i) end
-    else
-        CheckUnit("player")
-    end
-    return required
-end
-
-local function UpdateGroupBuffs()
-    if not mainFrame:IsShown() or inCombat or InCombatLockdown() then 
-        BuffCheckDB.visible = false
-        mainFrame:SetShown(BuffCheckDB.visible)
-    return end
-    
-    local requiredClassBuffs = GetRequiredBuffs()
-    local numGroup = GetNumGroupMembers()
-    local units = {}
-    
-    if IsInRaid() then
-        for i = 1, numGroup do table.insert(units, "raid"..i) end
-    elseif IsInGroup() then
-        table.insert(units, "player")
-        for i = 1, numGroup - 1 do table.insert(units, "party"..i) end
-    else
-        table.insert(units, "player")
     end
     
     for _, line in ipairs(playerLines) do line:Hide() end
@@ -184,54 +261,8 @@ local function UpdateGroupBuffs()
     
     for _, unit in ipairs(units) do
         if UnitExists(unit) then
-            local hasC, hasF, hasR, hasB = false, false, false, true
+            local hasC, hasF, hasR, hasB = ScanUnitBuffs(unit, requiredClassBuffs)
             
-            -- 1. Verificar Buffs de Classe (API Segura)
-            for spellID in pairs(requiredClassBuffs) do
-                if not C_UnitAuras.GetPlayerAuraBySpellID(spellID, unit) then
-                    hasB = false
-                    break
-                end
-            end
-
-            -- 2. Verificar Frascos (API Segura)
-            for _, id in ipairs(FLASK_IDS) do
-                if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then
-                    hasF = true
-                    break
-                end
-            end
-
-            -- 3. Verificar Runas (API Segura)
-            for _, id in ipairs(RUNE_IDS) do
-                if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then
-                    hasR = true
-                    break
-                end
-            end
-
-            -- 4. Verificar Comida (Usa loop numérico em vez de ForEachAura para compatibilidade)
-            -- IMPORTANTE: Não tocamos no campo 'name' para evitar Taint
-            for j = 1, 40 do
-                local data = C_UnitAuras.GetAuraDataByIndex(unit, j, "HELPFUL")
-                if not data then break end
-                if data.isFullBody then 
-                    hasC = true 
-                    break 
-                end
-            end
-            
-            -- Fallback para IDs específicos de comida se isFullBody não detectar
-            if not hasC then
-                for _, id in ipairs(FOOD_IDS) do
-                    if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then
-                        hasC = true
-                        break
-                    end
-                end
-            end
-
-            -- Exibição
             if not (hasC and hasF and hasR and hasB) then
                 if not playerLines[displayIndex] then playerLines[displayIndex] = CreatePlayerLine(displayIndex) end
                 local line = playerLines[displayIndex]
