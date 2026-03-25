@@ -1,7 +1,7 @@
 --[[
     Addon: BuffCheckByFerocious
-    Versão: 1.8.0 (Fix Combat Taint & Player Missing)
-    Descrição: Verifica consumíveis e buffs. Proteção contra Taint de combate.
+    Versão: 1.9.0 (Combat Hide & Performance Optimization)
+    Descrição: Verifica consumíveis e buffs. Oculta e pausa durante combate.
     Controle: 
         - Clique no Cadeado/Setas: Bloqueia/Desbloqueia movimento da janela.
         - Scroll no título: Ajustar transparência.
@@ -17,18 +17,33 @@ BuffCheckDB = BuffCheckDB or {
     isLocked = false,
 }
 
--- Mapeamento de Buffs por Classe (SpellIDs para evitar Taint)
-local CLASS_BUFFS = {
-    [1459] = "Arcane Intellect",
-    [21562] = "Power Word: Fortitude",
-    [6673] = "Battle Shout",
-    [381732] = "Blessing of Bronze",
-    [1126] = "Mark of the Wild",
-}
-
 -- Variáveis de controle de atualização
 local lastUpdate = 0
-local UPDATE_INTERVAL = 1.0 -- Varredura a cada 1 segundo
+local UPDATE_INTERVAL = 1.0 
+local inCombat = false
+
+-- --- TABELAS DE IDs (Seguro contra Taint) ---
+
+-- Buffs de Classe
+local CLASS_BUFFS_IDS = {
+    [1459] = "MAGE",    -- Arcane Intellect
+    [21562] = "PRIEST",  -- Power Word: Fortitude
+    [6673] = "WARRIOR", -- Battle Shout
+    [381732] = "EVOKER", -- Blessing of Bronze
+    [1126] = "DRUID",   -- Mark of the Wild
+}
+
+-- Frascos / Elixires (IDs de TWW/Midnight)
+local FLASK_IDS = {
+    [435422] = true, [435416] = true, [438499] = true, [435418] = true,
+    [435417] = true, [443393] = true, [443210] = true,
+}
+
+-- Runas
+local RUNE_IDS = {
+    [434488] = true, -- Crystallized Augment Rune
+    [393438] = true, -- Draconic Augment Rune
+}
 
 -- --- INTERFACE GRÁFICA ---
 local mainFrame = CreateFrame("Frame", "BuffCheckByFerociousFrame", UIParent, "BackdropTemplate")
@@ -60,7 +75,6 @@ local title = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 title:SetPoint("TOP", 0, -10)
 title:SetText("BuffCheckByFerocious")
 
--- Botão de Bloqueio
 local lockBtn = CreateFrame("Button", nil, mainFrame)
 lockBtn:SetSize(20, 20)
 lockBtn:SetPoint("TOPRIGHT", -8, -8)
@@ -119,19 +133,15 @@ end
 
 -- --- LÓGICA DE SCAN ---
 
--- Obtém os buffs de classe necessários baseados na composição do grupo
 local function GetRequiredBuffs()
     local required = {}
     local numGroup = GetNumGroupMembers()
     
-    -- Função auxiliar para mapear buffs pela classe da unidade
     local function CheckUnit(unit)
         local _, class = UnitClass(unit)
-        if class == "MAGE" then required[1459] = true end
-        if class == "PRIEST" then required[21562] = true end
-        if class == "WARRIOR" then required[6673] = true end
-        if class == "EVOKER" then required[381732] = true end
-        if class == "DRUID" then required[1126] = true end
+        for spellID, buffClass in pairs(CLASS_BUFFS_IDS) do
+            if class == buffClass then required[spellID] = true end
+        end
     end
 
     if IsInRaid() then
@@ -146,13 +156,13 @@ local function GetRequiredBuffs()
 end
 
 local function UpdateGroupBuffs()
-    if not mainFrame:IsShown() then return end
+    -- Se a janela não estiver visível ou o jogador estiver em combate, não processamos nada
+    if not mainFrame:IsShown() or inCombat then return end
     
     local requiredClassBuffs = GetRequiredBuffs()
     local numGroup = GetNumGroupMembers()
-    
-    -- Lista de unidades a verificar
     local units = {}
+    
     if IsInRaid() then
         for i = 1, numGroup do table.insert(units, "raid"..i) end
     elseif IsInGroup() then
@@ -170,7 +180,7 @@ local function UpdateGroupBuffs()
         if UnitExists(unit) then
             local hasC, hasF, hasR, hasB = false, false, false, true
             
-            -- Verificar Buffs de Classe (Pelo SpellID para evitar Taint)
+            -- Verificar Buffs de Classe (SpellID)
             for spellID in pairs(requiredClassBuffs) do
                 if not C_UnitAuras.GetPlayerAuraBySpellID(spellID, unit) then
                     hasB = false
@@ -178,31 +188,22 @@ local function UpdateGroupBuffs()
                 end
             end
 
-            -- Scan Consumíveis
-            -- IMPORTANTE: Usamos C_Spell.GetSpellName(spellID) para evitar manipular a secret string diretamente
+            -- Scan Consumíveis por ID
             for j = 1, 40 do
                 local data = C_UnitAuras.GetAuraDataByIndex(unit, j, "HELPFUL")
                 if not data then break end
                 
-                -- Obtemos o nome do feitiço de forma segura (não contaminada)
-                local spellName = C_Spell.GetSpellName(data.spellId)
-                if spellName then
-                    local auraNameLower = spellName:lower()
-                    
-                    -- Lógica de busca por palavras-chave
-                    if data.isFullBody or auraNameLower:find("well fed") or auraNameLower:find("alimentado") then hasC = true end
-                    if auraNameLower:find("flask") or auraNameLower:find("frasco") or auraNameLower:find("phial") or auraNameLower:find("frasco") then hasF = true end
-                    if auraNameLower:find("rune") or auraNameLower:find("runa") then hasR = true end
-                end
+                local sID = data.spellId
+                if data.isFullBody then hasC = true end
+                if FLASK_IDS[sID] then hasF = true end
+                if RUNE_IDS[sID] then hasR = true end
             end
             
-            -- Se faltar qualquer coisa, mostra na lista
             if not (hasC and hasF and hasR and hasB) then
                 if not playerLines[displayIndex] then playerLines[displayIndex] = CreatePlayerLine(displayIndex) end
                 local line = playerLines[displayIndex]
                 line.name:SetText(UnitName(unit))
                 
-                -- Atualiza cores das letras
                 line.indicators["FO"]:SetTextColor(hasC and 0 or 1, hasC and 1 or 0, 0)
                 line.indicators["FL"]:SetTextColor(hasF and 0 or 1, hasF and 1 or 0, 0)
                 line.indicators["R"]:SetTextColor(hasR and 0 or 1, hasR and 1 or 0, 0)
@@ -214,18 +215,14 @@ local function UpdateGroupBuffs()
         end
     end
 
-    -- Ajuste dinâmico de altura da janela
-    local numDisplayed = displayIndex - 1
-    local targetHeight = 40 + (numDisplayed * 24) + 5
-    if numDisplayed == 0 then targetHeight = 40 end
-    
-    if mainFrame:GetHeight() ~= targetHeight then
-        mainFrame:SetHeight(targetHeight)
-    end
+    local targetHeight = math.max(40, 40 + ((displayIndex - 1) * 24) + 5)
+    if mainFrame:GetHeight() ~= targetHeight then mainFrame:SetHeight(targetHeight) end
 end
 
--- --- TIMER DE ATUALIZAÇÃO ---
+-- --- TIMER ---
 mainFrame:SetScript("OnUpdate", function(self, elapsed)
+    if inCombat then return end -- Pausa total do processamento em combate
+    
     lastUpdate = lastUpdate + elapsed
     if lastUpdate >= UPDATE_INTERVAL then
         lastUpdate = 0
@@ -251,8 +248,7 @@ border:SetSize(52, 52)
 border:SetPoint("TOPLEFT")
 
 local function UpdateMinimapPosition()
-    if not BuffCheckDB.minimapPos then BuffCheckDB.minimapPos = 45 end
-    local angle = math.rad(BuffCheckDB.minimapPos)
+    local angle = math.rad(BuffCheckDB.minimapPos or 45)
     local x, y = math.cos(angle) * 102, math.sin(angle) * 102
     miniButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
 end
@@ -268,11 +264,7 @@ miniButton:SetScript("OnDragStart", function(self)
         UpdateMinimapPosition()
     end) 
 end)
-miniButton:SetScript("OnDragStop", function(self) 
-    self:UnlockHighlight() 
-    self:SetScript("OnUpdate", nil) 
-end)
-
+miniButton:SetScript("OnDragStop", function(self) self:UnlockHighlight() self:SetScript("OnUpdate", nil) end)
 miniButton:SetScript("OnClick", function()
     BuffCheckDB.visible = not BuffCheckDB.visible
     mainFrame:SetShown(BuffCheckDB.visible)
@@ -283,6 +275,8 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
+events:RegisterEvent("PLAYER_REGEN_DISABLED") -- Entrou em combate
+events:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Saiu de combate
 
 events:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -290,6 +284,16 @@ events:SetScript("OnEvent", function(self, event, arg1)
         UpdateLockIcon()
         UpdateMinimapPosition()
         mainFrame:SetShown(BuffCheckDB.visible)
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        inCombat = true
+        mainFrame:Hide()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        inCombat = false
+        -- Só reexibe se o usuário não tiver ocultado manualmente pelo minimapa
+        if BuffCheckDB.visible then
+            mainFrame:Show()
+            UpdateGroupBuffs()
+        end
     else
         UpdateGroupBuffs()
     end
