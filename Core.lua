@@ -1,7 +1,7 @@
 --[[
     Addon: BuffCheckByFerocious
-    Versão: 1.9.0 (Combat Hide & Performance Optimization)
-    Descrição: Verifica consumíveis e buffs. Oculta e pausa durante combate.
+    Versão: 1.9.1 (Anti-Taint & Secret Index Fix)
+    Descrição: Verifica consumíveis e buffs. Oculta e pausa durante combate com proteção total contra erros de "Secret String".
     Controle: 
         - Clique no Cadeado/Setas: Bloqueia/Desbloqueia movimento da janela.
         - Scroll no título: Ajustar transparência.
@@ -35,14 +35,12 @@ local CLASS_BUFFS_IDS = {
 
 -- Frascos / Elixires (IDs de TWW/Midnight)
 local FLASK_IDS = {
-    [435422] = true, [435416] = true, [438499] = true, [435418] = true,
-    [435417] = true, [443393] = true, [443210] = true,
+    435422, 435416, 438499, 435418, 435417, 443393, 443210
 }
 
 -- Runas
 local RUNE_IDS = {
-    [434488] = true, -- Crystallized Augment Rune
-    [393438] = true, -- Draconic Augment Rune
+    434488, 393438
 }
 
 -- --- INTERFACE GRÁFICA ---
@@ -98,6 +96,7 @@ end)
 
 mainFrame:EnableMouseWheel(true)
 mainFrame:SetScript("OnMouseWheel", function(self, delta)
+    if BuffCheckDB.isLocked then return end
     local currentAlpha = BuffCheckDB.alpha or 0.5
     BuffCheckDB.alpha = math.max(0.1, math.min(1, currentAlpha + (delta * 0.05)))
     UpdateVisuals()
@@ -157,7 +156,7 @@ end
 
 local function UpdateGroupBuffs()
     -- Se a janela não estiver visível ou o jogador estiver em combate, não processamos nada
-    if not mainFrame:IsShown() or inCombat then return end
+    if not mainFrame:IsShown() or inCombat or InCombatLockdown() then return end
     
     local requiredClassBuffs = GetRequiredBuffs()
     local numGroup = GetNumGroupMembers()
@@ -188,15 +187,23 @@ local function UpdateGroupBuffs()
                 end
             end
 
-            -- Scan Consumíveis por ID
+            -- Scan Consumíveis por ID (MÉTODO ANTI-SECRET INDEX)
             for j = 1, 40 do
                 local data = C_UnitAuras.GetAuraDataByIndex(unit, j, "HELPFUL")
                 if not data then break end
                 
                 local sID = data.spellId
                 if data.isFullBody then hasC = true end
-                if FLASK_IDS[sID] then hasF = true end
-                if RUNE_IDS[sID] then hasR = true end
+                
+                -- Comparamos sID (que pode ser secret) com nossos IDs constantes
+                -- Usar loops evita "table index is secret"
+                for _, id in ipairs(FLASK_IDS) do
+                    if sID == id then hasF = true break end
+                end
+                
+                for _, id in ipairs(RUNE_IDS) do
+                    if sID == id then hasR = true break end
+                end
             end
             
             if not (hasC and hasF and hasR and hasB) then
@@ -215,13 +222,16 @@ local function UpdateGroupBuffs()
         end
     end
 
-    local targetHeight = math.max(40, 40 + ((displayIndex - 1) * 24) + 5)
-    if mainFrame:GetHeight() ~= targetHeight then mainFrame:SetHeight(targetHeight) end
+    -- Altura Dinâmica (Protegida contra Taint)
+    if not InCombatLockdown() then
+        local targetHeight = math.max(40, 40 + ((displayIndex - 1) * 24) + 5)
+        if mainFrame:GetHeight() ~= targetHeight then mainFrame:SetHeight(targetHeight) end
+    end
 end
 
 -- --- TIMER ---
 mainFrame:SetScript("OnUpdate", function(self, elapsed)
-    if inCombat then return end -- Pausa total do processamento em combate
+    if inCombat or InCombatLockdown() then return end 
     
     lastUpdate = lastUpdate + elapsed
     if lastUpdate >= UPDATE_INTERVAL then
@@ -275,8 +285,8 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
-events:RegisterEvent("PLAYER_REGEN_DISABLED") -- Entrou em combate
-events:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Saiu de combate
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 events:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -289,7 +299,6 @@ events:SetScript("OnEvent", function(self, event, arg1)
         mainFrame:Hide()
     elseif event == "PLAYER_REGEN_ENABLED" then
         inCombat = false
-        -- Só reexibe se o usuário não tiver ocultado manualmente pelo minimapa
         if BuffCheckDB.visible then
             mainFrame:Show()
             UpdateGroupBuffs()
