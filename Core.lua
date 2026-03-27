@@ -1,7 +1,7 @@
 --[[
     Addon: BuffCheckByFerocious
-    Versão: 2.0.1 (UI Adjustment)
-    Descrição: Verifica consumíveis e buffs. Botão de relatório movido para a esquerda.
+    Versão: 2.0.3 (Fix: API Compatibility & Group Detection)
+    Descrição: Verifica consumíveis e buffs. Corrigido erro de "nil value" e detecção cruzada.
     Controle: 
         - Clique no Cadeado/Setas: Bloqueia/Desbloqueia movimento da janela.
         - Clique no Pergaminho (Esquerda): Relata players sem buffs no chat.
@@ -23,16 +23,7 @@ local lastUpdate = 0
 local UPDATE_INTERVAL = 1.0 
 local inCombat = false
 
--- --- TABELAS DE IDs (Seguro contra Taint) ---
-
--- Buffs de Classe
-local CLASS_BUFFS_IDS = {
-    [1459] = "MAGE",    -- Arcane Intellect
-    [21562] = "PRIEST",  -- Power Word: Fortitude
-    [6673] = "WARRIOR", -- Battle Shout
-    [381732] = "EVOKER", -- Blessing of Bronze
-    [1126] = "DRUID",   -- Mark of the Wild
-}
+-- --- TABELAS DE IDs (SpellIDs/AuraIDs) ---
 
 -- Buffs de Classe
 local CLASS_BUFFS_IDS = {
@@ -45,32 +36,42 @@ local CLASS_BUFFS_IDS = {
 
 -- Frascos / Elixires (SpellIDs da Aura aplicada)
 local FLASK_IDS = {
-    -- Midnight (12.0)
+    -- Midnight (12.0) Calderões
+    1230874, -- Frasco da Resistencia Talassiana (Versatilidade)
+    1230857, -- Frasco da Resistencia Talassiana (Versatilidade)
+
+    -- Midnight (12.0) PVP
+    1235061, -- Frasco Vicioso de Honra (PvP)
+
+    -- Midnight (12.0) Fracas
     1235057, -- Frasco da Resistencia Talassiana (Versatilidade)
     1235058, -- Frasco dos Cavaleiros de Sangue (Aceleração)
     1235059, -- Frasco dos Magisteres (Maestria)
     1235060, -- Frasco do Sol Estilhaçado (Crítico)
-    1235061, -- Frasco Vicioso de Honra (PvP)
-    -- TWW (11.0 Fallback)
-    435422, 435416, 438499, 435418, 435417, 443393, 443210
+
+    -- Midnight (12.0) Melhores
+    1230875, -- Frasco da Resistencia Talassiana (Versatilidade)
+    1230877, -- Frasco dos Cavaleiros de Sangue (Aceleração)
+    1230876, -- Frasco dos Magisteres (Maestria)
+    1230878, -- Frasco do Sol Estilhaçado (Crítico)
+    
 }
 
 -- Runas (SpellIDs da Aura aplicada)
 local RUNE_IDS = {
     1235065, -- Runa de Aumento Tocada pelo Caos (Midnight)
-    434488,  -- Runa de Aumento Cristalizada (TWW)
-    393438,  -- Runa de Aumento Dracônica (DF)
 }
 
 -- Comidas (Well Fed / AuraIDs)
 local FOOD_IDS = {
     -- Midnight (12.0) - IDs das variações de "Substancialmente Bem Alimentado"
     1233709, 1233710, 1233711, 1233712, 1233713, 1233714, 1233715, 1233716,
+    
+    -- Midnight (12.0) - IDs das variações mais fracas perde ao morrer
     1232317, -- Bem alimentado (Base)
     1232318, -- Silvermoon Parade (Banquete)
     1232319, -- Royal Toast (Status único)
-    -- TWW Fallback
-    440401, 440402, 440403
+    1284616, 1284617, 1284618, 1284619, -- Marmita do Campeão
 }
 
 -- --- INTERFACE GRÁFICA ---
@@ -105,7 +106,6 @@ title:SetText("BuffCheckByFerocious")
 
 -- --- BOTÕES DO CABEÇALHO ---
 
--- Botão de Lock (Mantido na Direita)
 local lockBtn = CreateFrame("Button", nil, mainFrame)
 lockBtn:SetSize(18, 18)
 lockBtn:SetPoint("TOPRIGHT", -8, -8)
@@ -127,14 +127,26 @@ lockBtn:SetScript("OnClick", function()
     UpdateLockIcon()
 end)
 
--- Botão de Relatório (Movido para a Esquerda)
 local reportBtn = CreateFrame("Button", nil, mainFrame)
 reportBtn:SetSize(18, 18)
-reportBtn:SetPoint("TOPLEFT", 8, -8) -- Nova posição: Canto superior esquerdo
+reportBtn:SetPoint("TOPLEFT", 8, -8)
 reportBtn:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_02")
 reportBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
 
--- --- LÓGICA DE RELATÓRIO NO CHAT ---
+-- --- LÓGICA DE SCAN SEGURO ---
+
+-- Função auxiliar robusta para verificar SpellIDs em qualquer unidade
+local function HasAura(unit, spellID)
+    if not UnitExists(unit) then return false end
+    for i = 1, 40 do
+        local data = C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL")
+        if not data then break end
+        if data.spellId == spellID then
+            return true
+        end
+    end
+    return false
+end
 
 local function GetUnitList()
     local units = {}
@@ -152,18 +164,26 @@ end
 
 local function ScanUnitBuffs(unit, requiredClassBuffs)
     local hasC, hasF, hasR, hasB = false, false, false, true
+    
+    -- Buffs Classe
     for spellID in pairs(requiredClassBuffs) do
-        if not C_UnitAuras.GetPlayerAuraBySpellID(spellID, unit) then
+        if not HasAura(unit, spellID) then
             hasB = false
             break
         end
     end
+    
+    -- Frascos
     for _, id in ipairs(FLASK_IDS) do
-        if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then hasF = true break end
+        if HasAura(unit, id) then hasF = true break end
     end
+    
+    -- Runas
     for _, id in ipairs(RUNE_IDS) do
-        if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then hasR = true break end
+        if HasAura(unit, id) then hasR = true break end
     end
+    
+    -- Comida (Check isFullBody + Lista de IDs)
     for j = 1, 40 do
         local data = C_UnitAuras.GetAuraDataByIndex(unit, j, "HELPFUL")
         if not data then break end
@@ -171,9 +191,10 @@ local function ScanUnitBuffs(unit, requiredClassBuffs)
     end
     if not hasC then
         for _, id in ipairs(FOOD_IDS) do
-            if C_UnitAuras.GetPlayerAuraBySpellID(id, unit) then hasC = true break end
+            if HasAura(unit, id) then hasC = true break end
         end
     end
+    
     return hasC, hasF, hasR, hasB
 end
 
@@ -187,8 +208,7 @@ local function ReportBuffsToChat()
         end
     end
 
-    local noFood = {}
-    local noFlask = {}
+    local noFood, noFlask = {}, {}
     local needsRebuff = false
 
     for _, unit in ipairs(units) do
@@ -202,25 +222,16 @@ local function ReportBuffsToChat()
     end
 
     local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "SAY")
-    
-    if #noFood > 0 then
-        SendChatMessage("noFood: " .. table.concat(noFood, ", "), channel)
-    end
-    if #noFlask > 0 then
-        SendChatMessage("noFlask: " .. table.concat(noFlask, ", "), channel)
-    end
-    if needsRebuff then
-        SendChatMessage("!! REBUFF !!", channel)
-    end
+    if #noFood > 0 then SendChatMessage("noFood: " .. table.concat(noFood, ", "), channel) end
+    if #noFlask > 0 then SendChatMessage("noFlask: " .. table.concat(noFlask, ", "), channel) end
+    if needsRebuff then SendChatMessage("!! REBUFF !!", channel) end
     
     if #noFood == 0 and #noFlask == 0 and not needsRebuff then
         print("|cFFFFFF00BuffCheck:|r Todos estão bufados!")
     end
 end
 
-reportBtn:SetScript("OnClick", function()
-    ReportBuffsToChat()
-end)
+reportBtn:SetScript("OnClick", ReportBuffsToChat)
 reportBtn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText("Relatar no Chat")
@@ -282,7 +293,6 @@ local function UpdateGroupBuffs()
     for _, line in ipairs(playerLines) do line:Hide() end
     
     local displayIndex = 1
-    
     for _, unit in ipairs(units) do
         if UnitExists(unit) then
             local hasC, hasF, hasR, hasB = ScanUnitBuffs(unit, requiredClassBuffs)
@@ -312,7 +322,6 @@ end
 -- --- TIMER ---
 mainFrame:SetScript("OnUpdate", function(self, elapsed)
     if inCombat or InCombatLockdown() then return end 
-    
     lastUpdate = lastUpdate + elapsed
     if lastUpdate >= UPDATE_INTERVAL then
         lastUpdate = 0
