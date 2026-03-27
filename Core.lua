@@ -34,19 +34,43 @@ local CLASS_BUFFS_IDS = {
     [1126] = "DRUID",   -- Mark of the Wild
 }
 
--- Frascos / Elixires (IDs comuns de Retail/Midnight)
+-- Buffs de Classe
+local CLASS_BUFFS_IDS = {
+    [1459] = "MAGE",    -- Arcane Intellect
+    [21562] = "PRIEST",  -- Power Word: Fortitude
+    [6673] = "WARRIOR", -- Battle Shout
+    [381732] = "EVOKER", -- Blessing of Bronze
+    [1126] = "DRUID",   -- Mark of the Wild
+}
+
+-- Frascos / Elixires (SpellIDs da Aura aplicada)
 local FLASK_IDS = {
-    435422, 435416, 438499, 435418, 435417, 443393, 443210, 443211, 443212
+    -- Midnight (12.0)
+    1235057, -- Frasco da Resistencia Talassiana (Versatilidade)
+    1235058, -- Frasco dos Cavaleiros de Sangue (Aceleração)
+    1235059, -- Frasco dos Magisteres (Maestria)
+    1235060, -- Frasco do Sol Estilhaçado (Crítico)
+    1235061, -- Frasco Vicioso de Honra (PvP)
+    -- TWW (11.0 Fallback)
+    435422, 435416, 438499, 435418, 435417, 443393, 443210
 }
 
--- Runas
+-- Runas (SpellIDs da Aura aplicada)
 local RUNE_IDS = {
-    434488, 393438
+    1235065, -- Runa de Aumento Tocada pelo Caos (Midnight)
+    434488,  -- Runa de Aumento Cristalizada (TWW)
+    393438,  -- Runa de Aumento Dracônica (DF)
 }
 
--- Comidas (IDs específicos como fallback)
+-- Comidas (Well Fed / AuraIDs)
 local FOOD_IDS = {
-    440401, 440402, 440403, 440316, 440317, 440318
+    -- Midnight (12.0) - IDs das variações de "Substancialmente Bem Alimentado"
+    1233709, 1233710, 1233711, 1233712, 1233713, 1233714, 1233715, 1233716,
+    1232317, -- Bem alimentado (Base)
+    1232318, -- Silvermoon Parade (Banquete)
+    1232319, -- Royal Toast (Status único)
+    -- TWW Fallback
+    440401, 440402, 440403
 }
 
 -- --- INTERFACE GRÁFICA ---
@@ -363,3 +387,19 @@ events:SetScript("OnEvent", function(self, event, arg1)
         UpdateGroupBuffs()
     end
 end)
+
+-- --- COMANDOS DE CHAT ---
+SLASH_BUFFCHECK1 = "/buffcheck"
+SlashCmdList["BUFFCHECK"] = function(msg)
+    if msg == "debug" then
+        print("|cFFFFFF00BuffCheck Debug:|r Listando SpellIDs das suas auras ativas:")
+        for j = 1, 40 do
+            local data = C_UnitAuras.GetAuraDataByIndex("player", j, "HELPFUL")
+            if not data then break end
+            print(string.format("- |cFF00FF00ID: %d|r | Nome: %s", data.spellId, data.name))
+        end
+    else
+        BuffCheckDB.visible = not BuffCheckDB.visible
+        mainFrame:SetShown(BuffCheckDB.visible)
+    end
+end
