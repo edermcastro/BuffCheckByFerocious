@@ -1,7 +1,7 @@
 --[[
     Addon: BuffCheckByFerocious
-    Versão: 2.0.6 (Performance Boost & Single-Pass Scan)
-    Descrição: Verifica consumíveis, buffs e óleos. Otimizado para evitar stutters em Raids.
+    Versão: 2.0.9 (EnchantID 8052 Integration)
+    Descrição: Verifica consumíveis, buffs e óleos. Adicionado suporte para EnchantID 8052.
     Controle: 
         - Clique no Cadeado/Setas: Bloqueia/Desbloqueia movimento da janela.
         - Clique no Pergaminho (Esquerda): Relata no chat.
@@ -32,7 +32,12 @@ local CLASS_BUFFS_IDS = {
 
 local FLASK_IDS_WEAK = { [1235057]=true, [1235058]=true, [1235059]=true, [1235060]=true, [1250100]=true, [1250101]=true, [1250102]=true, [1250103]=true, [1250104]=true, [1250105]=true }
 local FLASK_IDS_STRONG = { [1230874]=true, [1230857]=true, [1235061]=true, [1230875]=true, [1230877]=true, [1230876]=true, [1230878]=true, [1250200]=true, [1250201]=true, [1250205]=true, [1250210]=true, [435422]=true, [435416]=true, [438499]=true, [435418]=true, [435417]=true, [443393]=true, [443210]=true }
-local OIL_IDS = { [1260100]=true, [1260101]=true, [1260105]=true, [1260110]=true, [1260115]=true }
+
+-- ÓLEOS: Adicionado EnchantID 8052 (Óleo de Fénix Talassiano)
+local OIL_IDS = { 
+    [8051]=true, [8052]=true, [8053]=true, [8054]=true -- ID de Encantamento de Arma
+}
+
 local RUNE_IDS = { [1235065]=true, [1264426]=true, [1270500]=true }
 local FOOD_IDS_WEAK = { [1232317]=true, [1232318]=true, [1232319]=true, [1284616]=true, [1284617]=true, [1284618]=true, [1284619]=true, [1245102]=true, [1245103]=true, [1245104]=true, [1245105]=true, [1245106]=true, [1245107]=true, [1246210]=true, [1246211]=true, [1246212]=true, [1246215]=true, [1246220]=true, [1246225]=true }
 local FOOD_IDS_STRONG = { [1233709]=true, [1233710]=true, [1233711]=true, [1233712]=true, [1233713]=true, [1233714]=true, [1233715]=true, [1233716]=true, [1247001]=true, [1247002]=true, [1247003]=true, [1247004]=true }
@@ -65,7 +70,7 @@ local title = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 title:SetPoint("TOP", 0, -10)
 title:SetText("BuffCheckByFerocious")
 
--- Botões
+-- Botões de Cabeçalho
 local lockBtn = CreateFrame("Button", nil, mainFrame)
 lockBtn:SetSize(18, 18)
 lockBtn:SetPoint("TOPRIGHT", -8, -8)
@@ -90,34 +95,36 @@ reportBtn:SetPoint("TOPLEFT", 8, -8)
 reportBtn:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_02")
 reportBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
 
--- --- LÓGICA DE SCAN OTIMIZADA (SINGLE PASS) ---
+-- --- LÓGICA DE SCAN ---
 
 local function ScanUnitBuffsOptimized(unit, requiredClassBuffs)
     local statusFO, statusFL, hasOL, hasR, hasB = 0, 0, false, false, true
     local foundBuffs = {}
 
-    -- Uma única passagem por todas as auras do alvo
-    for i = 1, 40 do
+    -- Verificação de Auras convencionais
+    for i = 1, 100 do
         local data = C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL")
         if not data then break end
         
         local sid = data.spellId
         foundBuffs[sid] = true
 
-        -- Checar Comida
         if data.isFullBody or FOOD_IDS_STRONG[sid] then statusFO = 2
         elseif statusFO < 2 and FOOD_IDS_WEAK[sid] then statusFO = 1 end
 
-        -- Checar Frasco
         if FLASK_IDS_STRONG[sid] then statusFL = 2
         elseif statusFL < 2 and FLASK_IDS_WEAK[sid] then statusFL = 1 end
 
-        -- Checar Óleo e Runa
         if OIL_IDS[sid] then hasOL = true end
         if RUNE_IDS[sid] then hasR = true end
     end
 
-    -- Verificar Buffs de Classe requeridos (usando a lista coletada no loop acima)
+    -- Verificação de Encantamento de Arma (Para óleos que não criam buffs de aura)
+    if not hasOL and unit == "player" then
+        local hasMainHand, _, _, mainHandEnchantID = GetWeaponEnchantInfo()
+        if hasMainHand and OIL_IDS[mainHandEnchantID] then hasOL = true end
+    end
+
     if requiredClassBuffs then
         for spellID in pairs(requiredClassBuffs) do
             if not foundBuffs[spellID] then hasB = false; break end
@@ -162,19 +169,19 @@ local function ReportBuffsToChat()
     end
 
     local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "SAY")
-    if #noFood > 0 then SendChatMessage("noFood: " .. table.concat(noFood, ", "), channel) end
-    if #noFlask > 0 then SendChatMessage("noFlask: " .. table.concat(noFlask, ", "), channel) end
-    if #noOil > 0 then SendChatMessage("noOil/Stone: " .. table.concat(noOil, ", "), channel) end
+    if #noFood > 0 then SendChatMessage("Comida: " .. table.concat(noFood, ", "), channel) end
+    if #noFlask > 0 then SendChatMessage("Frasco: " .. table.concat(noFlask, ", "), channel) end
+    if #noOil > 0 then SendChatMessage("Óleo/Pedra: " .. table.concat(noOil, ", "), channel) end
     if needsRebuff then SendChatMessage("!! REBUFF !!", channel) end
 end
 
 reportBtn:SetScript("OnClick", ReportBuffsToChat)
 
--- --- UI UPDATES ---
+-- --- ATUALIZAÇÃO DA INTERFACE ---
 local function ApplyColor(indicator, status)
-    if status == 2 or status == true then indicator:SetTextColor(0, 1, 0)
-    elseif status == 1 then indicator:SetTextColor(1, 1, 0)
-    else indicator:SetTextColor(1, 0, 0) end
+    if status == 2 or status == true then indicator:SetTextColor(0, 1, 0) -- Verde
+    elseif status == 1 then indicator:SetTextColor(1, 1, 0) -- Amarelo
+    else indicator:SetTextColor(1, 0, 0) end -- Vermelho
 end
 
 local function CreatePlayerLine(index)
@@ -200,7 +207,7 @@ local function UpdateGroupBuffs()
     if not mainFrame:IsShown() or inCombat or InCombatLockdown() then return end
     
     local units = GetUnitList()
-    local req = {} -- Cache de buffs requeridos para este ciclo
+    local req = {}
     for _, u in ipairs(units) do
         local _, class = UnitClass(u)
         for sid, bclass in pairs(CLASS_BUFFS_IDS) do if class == bclass then req[sid] = true end end
@@ -233,7 +240,7 @@ local function UpdateGroupBuffs()
     end
 end
 
--- --- TIMER & EVENTOS ---
+-- --- CRONÓMETRO E EVENTOS ---
 mainFrame:SetScript("OnUpdate", function(self, elapsed)
     if inCombat or InCombatLockdown() then return end 
     lastUpdate = lastUpdate + elapsed
@@ -260,7 +267,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
     else UpdateGroupBuffs() end
 end)
 
--- --- MINIMAP ICON ---
+-- --- ÍCONE DO MINIMAPA ---
 local miniButton = CreateFrame("Button", "BuffCheckByFerociousMinimap", Minimap)
 miniButton:SetSize(31, 31); miniButton:SetFrameLevel(10)
 miniButton:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
@@ -282,13 +289,24 @@ end) end)
 miniButton:SetScript("OnDragStop", function(self) self:UnlockHighlight(); self:SetScript("OnUpdate", nil) end)
 miniButton:SetScript("OnClick", function() BuffCheckDB.visible = not BuffCheckDB.visible; mainFrame:SetShown(BuffCheckDB.visible) end)
 
--- --- SLASH ---
+-- --- COMANDOS DE DEPURAÇÃO ---
 SLASH_BUFFCHECK1 = "/buffcheck"
 SlashCmdList["BUFFCHECK"] = function(msg)
     if msg == "debug" then
-        for j = 1, 40 do
+        print("|cFFFFFF00--- BuffCheck Depuração Extrema ---|r")
+        local found = false
+        for j = 1, 100 do
             local data = C_UnitAuras.GetAuraDataByIndex("player", j, "HELPFUL")
-            if data then print(string.format("- |cFF00FF00ID: %d|r | %s", data.spellId, data.name)) end
+            if data then 
+                print(string.format("Aura: |cFF00FF00ID: %d|r | Nome: %s", data.spellId, data.name))
+                found = true
+            end
         end
-    else BuffCheckDB.visible = not BuffCheckDB.visible; mainFrame:SetShown(BuffCheckDB.visible) end
+        if not found then print("Nenhuma aura encontrada.") end
+        local hasMain, _, _, mainID = GetWeaponEnchantInfo()
+        if hasMain then print(string.format("Arma Principal: |cFF00FFFFEnchantID: %d|r", mainID)) end
+        print("|cFFFFFF00-------------------------------|r")
+    else 
+        BuffCheckDB.visible = not BuffCheckDB.visible; mainFrame:SetShown(BuffCheckDB.visible) 
+    end
 end
