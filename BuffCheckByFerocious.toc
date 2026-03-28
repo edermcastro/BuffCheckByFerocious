@@ -3,8 +3,8 @@
 ## Notes: Real-time raid/party buff and consumable monitor.
 ## Notes-ptBR: Monitor de buffs e consumíveis para raid/grupo em tempo real.
 ## Author: Ferocious
-## Version: 2.1.0
-## SavedVariables: BuffCheckDB, BFC_Config, BFC_DBIcon
+## Version: 2.0.5
+## SavedVariables: BuffCheckDB
 ## IconTexture: Interface\Icons\INV_Misc_Food_15
 
 # Bibliotecas

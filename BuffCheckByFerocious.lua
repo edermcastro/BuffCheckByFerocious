@@ -1,6 +1,6 @@
 --[[
     Addon: BuffCheckByFerocious
-    Version: 2.1.0 (EnchantID Integration)
+    Version: 2.0.5 (EnchantID Integration)
     Author: Ferocious
     Description: Real-time raid/party buff and consumable monitor for Midnight.
 ]]
