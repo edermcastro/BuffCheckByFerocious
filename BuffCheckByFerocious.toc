@@ -1,8 +1,9 @@
 ## Interface: 120001
 ## Title: BuffCheckByFerocious
-## Notes: BuffCheck com Interface e Ícone no Minimapa, desenvolvido por EMC - Linformatica Co.
-## Author: Eder Moraes de Castro
-## Version: 1.0
+## Notes: Real-time raid/party buff and consumable monitor.
+## Notes-ptBR: Monitor de buffs e consumíveis para raid/grupo em tempo real.
+## Author: Ferocious
+## Version: 2.1.0
 ## SavedVariables: BuffCheckDB, BFC_Config, BFC_DBIcon
 ## IconTexture: Interface\Icons\INV_Misc_Food_15
 
@@ -12,4 +13,4 @@ Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
 Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
-Core.lua
+BuffCheckByFerocious.lua

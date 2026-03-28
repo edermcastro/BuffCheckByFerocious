@@ -1,6 +1,6 @@
 --[[
     Addon: BuffCheckByFerocious
-    Versão: 2.0.9 (EnchantID 8052 Integration)
+    Versão: 2.1.0 (EnchantID Integration)
     Descrição: Verifica consumíveis, buffs e óleos. Adicionado suporte para EnchantID 8052.
     Controle: 
         - Clique no Cadeado/Setas: Bloqueia/Desbloqueia movimento da janela.
@@ -293,7 +293,7 @@ miniButton:SetScript("OnClick", function() BuffCheckDB.visible = not BuffCheckDB
 SLASH_BUFFCHECK1 = "/buffcheck"
 SlashCmdList["BUFFCHECK"] = function(msg)
     if msg == "debug" then
-        print("|cFFFFFF00--- BuffCheck Depuração Extrema ---|r")
+        print("|cFFFFFF00--- BuffCheck Depuração ---|r")
         local found = false
         for j = 1, 100 do
             local data = C_UnitAuras.GetAuraDataByIndex("player", j, "HELPFUL")
