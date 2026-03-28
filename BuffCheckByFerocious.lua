@@ -1,8 +1,8 @@
 --[[
     Addon: BuffCheckByFerocious
-    Version: 2.0.7 (Clean Performance Edition)
+    Version: 2.1.0 (Clean Performance Edition)
     Author: Ferocious
-    Description: Checagem de buffs e consumíveis em tempo real para Wow.
+    Description: Real-time raid/party buff and consumable monitor for Midnight.
 ]]
 
 local addonName, ns = ...
@@ -70,7 +70,9 @@ mainFrame:EnableMouse(true)
 mainFrame:SetClampedToScreen(true)
 mainFrame:RegisterForDrag("LeftButton")
 
-mainFrame:SetScript("OnDragStart", function(self) if not BuffCheckDB.isLocked then self:StartMoving() end end)
+mainFrame:SetScript("OnDragStart", function(self) 
+    if not BuffCheckDB.isLocked then self:StartMoving() end 
+end)
 mainFrame:SetScript("OnDragStop", mainFrame.StopMovingOrSizing)
 
 local function UpdateVisuals()
@@ -105,7 +107,10 @@ local function UpdateLockIcon()
     end
 end
 
-lockBtn:SetScript("OnClick", function() BuffCheckDB.isLocked = not BuffCheckDB.isLocked; UpdateLockIcon() end)
+lockBtn:SetScript("OnClick", function() 
+    BuffCheckDB.isLocked = not BuffCheckDB.isLocked
+    UpdateLockIcon() 
+end)
 
 local reportBtn = CreateFrame("Button", nil, mainFrame)
 reportBtn:SetSize(18, 18)
@@ -113,7 +118,7 @@ reportBtn:SetPoint("TOPLEFT", 8, -8)
 reportBtn:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_02")
 reportBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
 
--- --- LÓGICA DE SCAN OTIMIZADA ---
+-- --- LÓGICA DE SCAN ---
 local function ScanUnitBuffs(unit, requiredClassBuffs)
     local statusFO, statusFL, hasR, hasB = 0, 0, false, true
     local foundBuffs = {}
@@ -126,11 +131,17 @@ local function ScanUnitBuffs(unit, requiredClassBuffs)
         local sid = data.spellId
         foundBuffs[sid] = true
 
-        if data.isFullBody or FOOD_IDS_STRONG[sid] then statusFO = 2
-        elseif statusFO < 2 and FOOD_IDS_WEAK[sid] then statusFO = 1 end
+        if data.isFullBody or FOOD_IDS_STRONG[sid] then 
+            statusFO = 2
+        elseif statusFO < 2 and FOOD_IDS_WEAK[sid] then 
+            statusFO = 1 
+        end
 
-        if FLASK_IDS_STRONG[sid] then statusFL = 2
-        elseif statusFL < 2 and FLASK_IDS_WEAK[sid] then statusFL = 1 end
+        if FLASK_IDS_STRONG[sid] then 
+            statusFL = 2
+        elseif statusFL < 2 and FLASK_IDS_WEAK[sid] then 
+            statusFL = 1 
+        end
 
         if RUNE_IDS[sid] then hasR = true end
         i = i + 1
@@ -164,7 +175,9 @@ local function ReportBuffsToChat()
     local req = {}
     for _, u in ipairs(units) do
         local _, class = UnitClass(u)
-        for sid, bclass in pairs(CLASS_BUFFS_IDS) do if class == bclass then req[sid] = true end end
+        for sid, bclass in pairs(CLASS_BUFFS_IDS) do 
+            if class == bclass then req[sid] = true end 
+        end
     end
 
     local noFood, noFlask, needsRebuff = {}, {}, false
@@ -188,9 +201,13 @@ reportBtn:SetScript("OnClick", ReportBuffsToChat)
 
 -- --- UI UPDATES ---
 local function ApplyColor(indicator, status)
-    if status == 2 or status == true then indicator:SetTextColor(0, 1, 0)
-    elseif status == 1 then indicator:SetTextColor(1, 1, 0)
-    else indicator:SetTextColor(1, 0, 0) end
+    if status == 2 or status == true then 
+        indicator:SetTextColor(0, 1, 0)
+    elseif status == 1 then 
+        indicator:SetTextColor(1, 1, 0)
+    else 
+        indicator:SetTextColor(1, 0, 0) 
+    end
 end
 
 local function CreatePlayerLine(index)
@@ -198,16 +215,20 @@ local function CreatePlayerLine(index)
     f:SetSize(190, 22)
     f:SetPoint("TOP", mainFrame, "TOP", 0, -(index * 24) - 15)
     f.bg = f:CreateTexture(nil, "BACKGROUND")
-    f.bg:SetAllPoints(); f.bg:SetColorTexture(1, 1, 1, 0.05)
+    f.bg:SetAllPoints()
+    f.bg:SetColorTexture(1, 1, 1, 0.05)
     
     f.name = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.name:SetPoint("LEFT", 5, 0); f.name:SetWidth(70); f.name:SetJustifyH("LEFT")
+    f.name:SetPoint("LEFT", 5, 0)
+    f.name:SetWidth(70)
+    f.name:SetJustifyH("LEFT")
     
     f.indicators = {}
     local tags = {"FO", "FL", "R", "B"}
     for i, tag in ipairs(tags) do
         local txt = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        txt:SetPoint("RIGHT", -5 - (4-i)*22, 0); txt:SetText(tag)
+        txt:SetPoint("RIGHT", -5 - (4-i)*22, 0)
+        txt:SetText(tag)
         f.indicators[tag] = txt
     end
     return f
@@ -220,7 +241,9 @@ local function UpdateGroupBuffs()
     local req = {}
     for _, u in ipairs(units) do
         local _, class = UnitClass(u)
-        for sid, bclass in pairs(CLASS_BUFFS_IDS) do if class == bclass then req[sid] = true end end
+        for sid, bclass in pairs(CLASS_BUFFS_IDS) do 
+            if class == bclass then req[sid] = true end 
+        end
     end
     
     for _, line in ipairs(playerLines) do line:Hide() end
@@ -230,14 +253,17 @@ local function UpdateGroupBuffs()
         if UnitExists(unit) then
             local sFO, sFL, hR, hB = ScanUnitBuffs(unit, req)
             if not (sFO == 2 and sFL == 2 and hR and hB) then
-                if not playerLines[dIdx] then playerLines[dIdx] = CreatePlayerLine(dIdx) end
+                if not playerLines[dIdx] then 
+                    playerLines[dIdx] = CreatePlayerLine(dIdx) 
+                end
                 local line = playerLines[dIdx]
                 line.name:SetText(UnitName(unit))
                 ApplyColor(line.indicators["FO"], sFO)
                 ApplyColor(line.indicators["FL"], sFL)
                 ApplyColor(line.indicators["R"], hR)
                 ApplyColor(line.indicators["B"], hB)
-                line:Show(); dIdx = dIdx + 1
+                line:Show()
+                dIdx = dIdx + 1
             end
         end
     end
@@ -248,7 +274,10 @@ end
 mainFrame:SetScript("OnUpdate", function(self, elapsed)
     if InCombatLockdown() then return end
     lastUpdate = lastUpdate + elapsed
-    if lastUpdate >= UPDATE_INTERVAL then lastUpdate = 0; UpdateGroupBuffs() end
+    if lastUpdate >= UPDATE_INTERVAL then 
+        lastUpdate = 0
+        UpdateGroupBuffs() 
+    end
 end)
 
 mainFrame:EnableMouseWheel(true)
@@ -264,19 +293,30 @@ events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
-        UpdateVisuals(); UpdateLockIcon(); UpdateMinimapPosition(); mainFrame:SetShown(BuffCheckDB.visible)
-    elseif event == "PLAYER_REGEN_DISABLED" then mainFrame:Hide()
-    elseif event == "PLAYER_REGEN_ENABLED" then if BuffCheckDB.visible then mainFrame:Show() end end
+        UpdateVisuals()
+        UpdateLockIcon()
+        UpdateMinimapPosition()
+        mainFrame:SetShown(BuffCheckDB.visible)
+    elseif event == "PLAYER_REGEN_DISABLED" then 
+        mainFrame:Hide()
+    elseif event == "PLAYER_REGEN_ENABLED" then 
+        if BuffCheckDB.visible then mainFrame:Show() end 
+    end
 end)
 
 -- --- MINIMAP ---
 local miniButton = CreateFrame("Button", "BuffCheckByFerociousMinimap", Minimap)
-miniButton:SetSize(31, 31); miniButton:SetFrameLevel(10)
+miniButton:SetSize(31, 31)
+miniButton:SetFrameLevel(10)
 miniButton:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 local icon = miniButton:CreateTexture(nil, "BACKGROUND")
-icon:SetTexture("Interface\\Icons\\INV_Misc_Food_15"); icon:SetSize(20, 20); icon:SetPoint("CENTER")
+icon:SetTexture("Interface\\Icons\\INV_Misc_Food_15")
+icon:SetSize(20, 20)
+icon:SetPoint("CENTER")
 local border = miniButton:CreateTexture(nil, "OVERLAY")
-border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder"); border:SetSize(52, 52); border:SetPoint("TOPLEFT")
+border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+border:SetSize(52, 52)
+border:SetPoint("TOPLEFT")
 
 function UpdateMinimapPosition()
     local angle = math.rad(BuffCheckDB.minimapPos or 45)
@@ -284,16 +324,24 @@ function UpdateMinimapPosition()
 end
 
 miniButton:RegisterForDrag("LeftButton")
-miniButton:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", function()
-    local cx, cy = Minimap:GetCenter()
-    local ux, uy = GetCursorPosition()
-    local scale = Minimap:GetEffectiveScale()
-    BuffCheckDB.minimapPos = math.deg(math.atan2((uy/scale)-cy, (ux/scale)-cx))
-    UpdateMinimapPosition()
-end) end)
+miniButton:SetScript("OnDragStart", function(self) 
+    self:SetScript("OnUpdate", function()
+        local cx, cy = Minimap:GetCenter()
+        local ux, uy = GetCursorPosition()
+        local scale = Minimap:GetEffectiveScale()
+        BuffCheckDB.minimapPos = math.deg(math.atan2((uy/scale)-cy, (ux/scale)-cx))
+        UpdateMinimapPosition()
+    end) 
+end)
 miniButton:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
-miniButton:SetScript("OnClick", function() BuffCheckDB.visible = not BuffCheckDB.visible; mainFrame:SetShown(BuffCheckDB.visible) end)
+miniButton:SetScript("OnClick", function() 
+    BuffCheckDB.visible = not BuffCheckDB.visible
+    mainFrame:SetShown(BuffCheckDB.visible) 
+end)
 
 -- --- SLASH ---
 SLASH_BUFFCHECK1 = "/bc"
-SlashCmdList["BUFFCHECK"] = function() BuffCheckDB.visible = not BuffCheckDB.visible; mainFrame:SetShown(BuffCheckDB.visible) end
+SlashCmdList["BUFFCHECK"] = function() 
+    BuffCheckDB.visible = not BuffCheckDB.visible
+    mainFrame:SetShown(BuffCheckDB.visible) 
+end
