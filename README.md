@@ -4,7 +4,7 @@ BuffCheckByFerocious is a lightweight World of Warcraft addon designed for raid 
 
 ## Features
 
-- Smart Scan: Monitors Class Buffs, Flasks (Standard and Midnight expansion), Weapon Oils, and Augment Runes.
+- Smart Scan: Monitors Class Buffs, Flasks (Standard and Midnight expansion), and Augment Runes.
 
 - Quality Detection: Automatically differentiates between high-quality (Green) and lower-quality (Yellow) consumables.
 
@@ -12,7 +12,7 @@ BuffCheckByFerocious is a lightweight World of Warcraft addon designed for raid 
 
 - Reporting: Quickly report missing buffs to Raid or Party chat with a single click.
 
-- Optimized for Midnight: Specifically updated for World of Warcraft 12.0.1 (Midnight) Aura IDs and Enchant IDs.
+- Optimized for Midnight: Specifically updated for World of Warcraft Aura IDs.
 
 ## How to use
 
@@ -26,4 +26,4 @@ BuffCheckByFerocious is a lightweight World of Warcraft addon designed for raid 
 
 # Installation
 
-Extract the BuffCheckByFerocious folder into your World of Warcraft/_retail_/Interface/AddOns/ directory.
+Extract the BuffCheckByFerocious folder into your `World of Warcraft/_retail_/Interface/AddOns/BuffCheckByFerocious` directory.

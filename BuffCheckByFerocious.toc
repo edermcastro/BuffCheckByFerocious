@@ -1,9 +1,9 @@
 ## Interface: 120001
 ## Title: BuffCheckByFerocious
-## Notes: Real-time raid/party buff and consumable monitor.
-## Notes-ptBR: Monitor de buffs e consumíveis para raid/grupo em tempo real.
+## Notes: Real-time raid/party buff and consumable checker.
+## Notes-ptBR: Checagem de buffs e consumíveis para raid/grupo.
 ## Author: Ferocious
-## Version: 2.0.5
+## Version: 2.0.7
 ## SavedVariables: BuffCheckDB
 ## IconTexture: Interface\Icons\INV_Misc_Food_15
 
