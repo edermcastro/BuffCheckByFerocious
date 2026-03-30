@@ -3,7 +3,7 @@
 ## Notes: Real-time raid/party buff and consumable checker.
 ## Notes-ptBR: Checagem de buffs e consumíveis para raid/grupo.
 ## Author: Ferocious
-## Version: 2.1.0
+## Version: 2.1.2
 ## SavedVariables: BuffCheckDB
 ## IconTexture: Interface\Icons\INV_Misc_Food_15
 
